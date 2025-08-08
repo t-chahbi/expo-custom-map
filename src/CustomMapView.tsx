@@ -1,14 +1,29 @@
-// src/CustomMapView.tsx
+// src/CustomMapView.tsx - Fixed version with performance improvements
 import React, { useRef, useEffect, useState, useCallback, memo } from 'react';
-import { View, StyleSheet, Dimensions, PanResponder } from 'react-native';
-import { MapViewProps, MapRegion, MarkerProps } from './types';
+import { View, StyleSheet, Dimensions, PanResponder, GestureResponderEvent, PanResponderGestureState } from 'react-native';
+import { MapViewProps, MapRegion } from './types';
 import TileLayer from './components/TileLayer';
 import MarkerComponent from './components/MarkerComponent';
 import ClusterMarker from './components/ClusterMarker';
-import useOptimizedGestures from './hooks/useOptimizedGestures';
-import { latLonToTile, tileToLatLon, clamp } from './utils';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+
+// Utility functions
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const latLonToTile = (lat: number, lon: number, zoom: number) => {
+  const n = Math.pow(2, zoom);
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const y = Math.floor(((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * n);
+  return { x, y };
+};
+
+const tileToLatLon = (x: number, y: number, zoom: number) => {
+  const n = Math.pow(2, zoom);
+  const lon = (x / n) * 360 - 180;
+  const lat = Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180 / Math.PI;
+  return { lat, lon };
+};
 
 const CustomMapView: React.FC<MapViewProps> = ({
   style = {},
@@ -31,41 +46,74 @@ const CustomMapView: React.FC<MapViewProps> = ({
   cacheSize = 100,
   ...props
 }) => {
-  // État de la région de la carte
+  // Map region state
   const [currentRegion, setCurrentRegion] = useState<MapRegion>({
     latitude: center[1],
     longitude: center[0],
     zoom: clamp(zoom, minZoom, maxZoom),
   });
 
-  // Références pour la gestion des gestes
+  // References for gesture handling
   const containerRef = useRef<View>(null);
   const lastPinchScale = useRef(1);
   const lastPanDelta = useRef({ x: 0, y: 0 });
+  const isGesturing = useRef(false);
 
-  // Hook pour la gestion optimisée des gestes
-  const {
-    throttledRegionChange,
-    debouncedRegionChange,
-    setRegion,
-    calculateNewRegion,
-  } = useOptimizedGestures(
-    currentRegion,
-    onRegionChange,
-    {
-      minZoom,
-      maxZoom,
-      enablePan: true,
-      enableZoom: true,
-    }
+  // Throttled region change callback
+  const throttledRegionChange = useCallback(
+    (() => {
+      let timeout: NodeJS.Timeout | null = null;
+      return (region: MapRegion) => {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          onRegionChange?.(region);
+        }, 16); // ~60fps
+      };
+    })(),
+    [onRegionChange]
   );
 
-  // Convertir les coordonnées géographiques en coordonnées d'écran
+  // Debounced region change callback  
+  const debouncedRegionChange = useCallback(
+    (() => {
+      let timeout: NodeJS.Timeout | null = null;
+      return (region: MapRegion) => {
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => {
+          onRegionChange?.(region);
+        }, 200);
+      };
+    })(),
+    [onRegionChange]
+  );
+
+  // Calculate new region based on pan and zoom gestures
+  const calculateNewRegion = useCallback((deltaX: number, deltaY: number, scale: number): MapRegion => {
+    const { latitude, longitude, zoom: currentZoom } = currentRegion;
+    
+    // Calculate new zoom
+    const newZoom = clamp(currentZoom + Math.log2(scale), minZoom, maxZoom);
+    
+    // Calculate meters per pixel for pan calculation
+    const metersPerPixel = 156543.03392 * Math.cos(latitude * Math.PI / 180) / Math.pow(2, newZoom);
+    
+    // Convert pixel delta to coordinate delta
+    const deltaLat = (deltaY * metersPerPixel) / 111320;
+    const deltaLon = (deltaX * metersPerPixel) / (111320 * Math.cos(latitude * Math.PI / 180));
+    
+    return {
+      latitude: clamp(latitude - deltaLat, -85, 85),
+      longitude: ((longitude - deltaLon + 540) % 360) - 180,
+      zoom: newZoom,
+    };
+  }, [currentRegion, minZoom, maxZoom]);
+
+  // Convert geographic coordinates to screen coordinates
   const coordinateToScreen = useCallback((coordinate: [number, number]): { x: number; y: number } => {
     const [lon, lat] = coordinate;
     const { latitude, longitude, zoom: currentZoom } = currentRegion;
     
-    // Calculer la distance en pixels par rapport au centre
+    // Calculate tile coordinates for center and point
     const centerTile = latLonToTile(latitude, longitude, currentZoom);
     const pointTile = latLonToTile(lat, lon, currentZoom);
     
@@ -78,7 +126,7 @@ const CustomMapView: React.FC<MapViewProps> = ({
     return { x: screenX, y: screenY };
   }, [currentRegion, tileSize]);
 
-  // Convertir les coordonnées d'écran en coordonnées géographiques
+  // Convert screen coordinates to geographic coordinates
   const screenToCoordinate = useCallback((screenPoint: { x: number; y: number }): [number, number] => {
     const { latitude, longitude, zoom: currentZoom } = currentRegion;
     
@@ -95,13 +143,14 @@ const CustomMapView: React.FC<MapViewProps> = ({
     return [targetLatLon.lon, targetLatLon.lat];
   }, [currentRegion, tileSize]);
 
-  // Gestionnaire de gestes pan
+  // Pan gesture handler
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderGrant: () => {
         lastPanDelta.current = { x: 0, y: 0 };
+        isGesturing.current = true;
       },
       onPanResponderMove: (evt, gestureState) => {
         const deltaX = gestureState.dx - lastPanDelta.current.x;
@@ -114,21 +163,22 @@ const CustomMapView: React.FC<MapViewProps> = ({
         lastPanDelta.current = { x: gestureState.dx, y: gestureState.dy };
       },
       onPanResponderRelease: () => {
+        isGesturing.current = false;
         debouncedRegionChange(currentRegion);
       },
     })
   ).current;
 
-  // Gestionnaire de pression sur la carte
+  // Map press handler
   const handleMapPress = useCallback((event: any) => {
-    if (onMapPress) {
+    if (onMapPress && !isGesturing.current) {
       const { locationX, locationY } = event.nativeEvent;
       const coordinate = screenToCoordinate({ x: locationX, y: locationY });
       onMapPress(coordinate);
     }
   }, [onMapPress, screenToCoordinate]);
 
-  // Clustering des marqueurs
+  // Marker clustering
   const processedMarkers = useCallback(() => {
     if (!enableClustering || markers.length === 0) {
       return markers.map(marker => ({
@@ -137,7 +187,7 @@ const CustomMapView: React.FC<MapViewProps> = ({
       }));
     }
 
-    // Algorithme simple de clustering
+    // Simple clustering algorithm
     const clusters: any[] = [];
     const processed = new Set<number>();
     
@@ -151,7 +201,7 @@ const CustomMapView: React.FC<MapViewProps> = ({
         screenPosition: screenPos,
       };
       
-      // Chercher les marqueurs proches
+      // Find nearby markers
       for (let i = index + 1; i < markers.length; i++) {
         if (processed.has(i)) continue;
         
@@ -174,7 +224,7 @@ const CustomMapView: React.FC<MapViewProps> = ({
     return clusters;
   }, [markers, enableClustering, clusterRadius, coordinateToScreen]);
 
-  // Mettre à jour la région quand les props changent
+  // Update region when props change
   useEffect(() => {
     const newRegion = {
       latitude: center[1],
@@ -182,10 +232,9 @@ const CustomMapView: React.FC<MapViewProps> = ({
       zoom: clamp(zoom, minZoom, maxZoom),
     };
     setCurrentRegion(newRegion);
-    setRegion(newRegion);
-  }, [center, zoom, minZoom, maxZoom, setRegion]);
+  }, [center, zoom, minZoom, maxZoom]);
 
-  // Notifier quand la carte est prête
+  // Notify when map is ready
   useEffect(() => {
     if (onMapReady) {
       const timer = setTimeout(onMapReady, 100);
@@ -244,7 +293,7 @@ const CustomMapView: React.FC<MapViewProps> = ({
       onTouchEnd={handleMapPress}
       {...props}
     >
-      {/* Couche de tuiles */}
+      {/* Tile layer */}
       <TileLayer
         center={[currentRegion.longitude, currentRegion.latitude]}
         zoom={currentRegion.zoom}
@@ -255,7 +304,7 @@ const CustomMapView: React.FC<MapViewProps> = ({
         preloadRadius={1}
       />
       
-      {/* Marqueurs */}
+      {/* Markers */}
       {renderMarkers()}
     </View>
   );
