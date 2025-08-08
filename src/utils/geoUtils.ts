@@ -19,7 +19,7 @@ export const tileToLatLon = (x: number, y: number, zoom: number): { lat: number;
 };
 
 export const calculateDistance = (coord1: [number, number], coord2: [number, number]): number => {
-  const R = 6371; // Rayon de la Terre en km
+  const R = 6371; // Earth radius in km
   const dLat = deg2rad(coord2[1] - coord1[1]);
   const dLon = deg2rad(coord2[0] - coord1[0]);
   const a =

@@ -4,7 +4,7 @@
 export { TileCache } from './TileCache';
 export { TilePreloader } from './TilePreloader';
 
-// Performance Optimizations (les parties qui ne dépendent pas de React Native)
+// Performance Optimizations (parts that don't depend on React Native)
 export {
   PERFORMANCE_CONSTANTS,
   MemoryManager,
@@ -16,7 +16,7 @@ export {
 // Utils
 export * from './utils';
 
-// Types (seulement ceux qui ne dépendent pas de React)
+// Types (only those that don't depend on React)
 export type {
   TileInfo,
   CacheStats,

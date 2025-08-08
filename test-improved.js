@@ -1,5 +1,5 @@
 // test-improved.js
-// Test amélioré pour les fonctionnalités core avec gestion d'erreurs
+// Enhanced test for core features with error handling
 const { TileCache, TilePreloader, PERFORMANCE_CONSTANTS, calculateDistance, clamp } = require('./lib/core');
 
 console.log('✅ Core imports successful!');
@@ -10,7 +10,7 @@ console.log('PERFORMANCE_CONSTANTS:', typeof PERFORMANCE_CONSTANTS);
 console.log('calculateDistance:', typeof calculateDistance);
 console.log('clamp:', typeof clamp);
 
-// Test TileCache instantiation avec cache mémoire uniquement
+// Test TileCache instantiation with memory-only cache
 try {
   console.log('\n--- Test TileCache Memory-Only ---');
   const memoryCache = TileCache.createMemoryOnlyCache(50);
@@ -30,13 +30,13 @@ try {
   console.error('❌ TileCache error:', error.message);
 }
 
-// Test TileCache instantiation standard (avec gestion d'erreurs pour AsyncStorage)
+// Test standard TileCache instantiation (with error handling for AsyncStorage)
 try {
   console.log('\n--- Test TileCache Standard ---');
   const cache = new TileCache(100, 7 * 24 * 60 * 60 * 1000, true);
   console.log('✅ Standard TileCache instance created (errors handled gracefully)');
   
-  // Attendre un peu pour que l'initialisation asynchrone se termine
+  // Wait a bit for async initialization to complete
   setTimeout(() => {
     const stats = cache.getStats();
     console.log('✅ Cache stats after initialization:', stats);

@@ -1,7 +1,7 @@
 {
   "name": "@chauffleet/expo-custom-map",
   "version": "1.0.0",
-  "description": "High-performance map library for Expo/React Native with custom tile support",
+  "description": "Open source custom map library for Expo/React Native. Use your own tiles without Google Maps, Mapbox, or API keys. Created by ChaufFleet.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "files": [
@@ -30,28 +30,36 @@
     "react-native",
     "expo",
     "map",
+    "maps",
     "tiles",
-    "maplibre",
+    "custom-maps",
+    "no-api-keys",
     "openstreetmap",
+    "maplibre",
+    "offline-maps",
     "performance",
-    "offline",
     "clustering",
     "routing",
-    "navigation"
+    "navigation",
+    "open-source",
+    "chauffleet"
   ],
   "author": {
-    "name": "ChaufFleet",
-    "email": "dev@chauffleet.com"
+    "name": "Thaha CHAHBI",
+    "email": "thaha.chahbi@chauffleet.com"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chauffleet/expo-custom-map.git"
+    "url": "https://github.com/t-chahbi/expo-custom-map.git"
   },
   "bugs": {
-    "url": "https://github.com/chauffleet/expo-custom-map/issues"
+    "url": "https://github.com/t-chahbi/expo-custom-map/issues"
   },
-  "homepage": "https://github.com/chauffleet/expo-custom-map#readme",
+  "homepage": "https://github.com/t-chahbi/expo-custom-map#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "peerDependencies": {
     "@react-native-async-storage/async-storage": ">=1.19.0",
     "@shopify/react-native-skia": ">=0.1.190",

@@ -1,6 +1,6 @@
 # @chauffleet/expo-custom-map
 
-> **Open source custom map library for Expo/React Native, created by ChaufFleet for its mobile app.**
+> **Open source custom map library for Expo/React Native, created by Chauffleet for its mobile app.**
 > **Purpose:** Easily use fully custom maps in your app, without Google Maps, Mapbox, or any API keys. No hidden providers—your tiles, your rules!
 
 [![npm version](https://badge.fury.io/js/%40chauffleet%2Fexpo-custom-map.svg)](https://badge.fury.io/js/%40chauffleet%2Fexpo-custom-map)
@@ -12,7 +12,7 @@ High-performance map library for Expo/React Native with custom tile support. �
 ---
 
 **Why this project?**
-- Developed by ChaufFleet for its mobile application.
+- Developed by Chauffleet for its mobile application.
 - 100% open source, MIT licensed.
 - Lets you use your own map tiles (OpenStreetMap, MapTiler, CartoDB, etc.)—no Google Maps, no Mapbox, no API keys required.
 - No hidden providers: Unlike `react-native-maps` and similar libraries, this does not use Google Maps or Mapbox under the hood.
@@ -344,4 +344,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-Made with ❤️ by [ChaufFleet](https://chauffleet.com)
+Made with ❤️ by [Chauffleet](https://chauffleet.com)

@@ -1,61 +1,61 @@
-# Test de la librairie expo-custom-map
+# expo-custom-map Library Tests
 
-## ✅ Tests réussis
+## ✅ Successful Tests
 
-### 1. Compilation TypeScript
-- ✅ Tous les fichiers TypeScript se compilent sans erreur
-- ✅ Les déclarations de types sont générées correctement
-- ✅ Le fichier `index.tsx` principal fonctionne
+### 1. TypeScript Compilation
+- ✅ All TypeScript files compile without errors
+- ✅ Type declarations are generated correctly
+- ✅ Main `index.tsx` file works
 
-### 2. Exports et imports
-- ✅ `CustomMapView` est exporté correctement (composant React Native)
-- ✅ `TileCache` et `TilePreloader` fonctionnent en mode autonome
-- ✅ Les hooks `useMapPerformance` et `useOptimizedGestures` sont exportés
-- ✅ Les types TypeScript sont accessibles
-- ✅ Les utilitaires mathématiques et géographiques fonctionnent
+### 2. Exports and imports
+- ✅ `CustomMapView` is exported correctly (React Native component)
+- ✅ `TileCache` and `TilePreloader` work in standalone mode
+- ✅ `useMapPerformance` and `useOptimizedGestures` hooks are exported
+- ✅ TypeScript types are accessible
+- ✅ Mathematical and geographical utilities work
 
-### 3. Fonctionnalités core testées
-- ✅ `TileCache` : création d'instance, statistiques, méthodes has/get/set
-- ✅ `TilePreloader` : création d'instance, gestion de la queue
-- ✅ `PerformanceOptimizations` : constantes et classes utilitaires
-- ✅ Utilitaires : `calculateDistance`, `clamp`, etc.
+### 3. Core features tested
+- ✅ `TileCache`: instance creation, statistics, has/get/set methods
+- ✅ `TilePreloader`: instance creation, queue management
+- ✅ `PerformanceOptimizations`: constants and utility classes
+- ✅ Utilities: `calculateDistance`, `clamp`, etc.
 
-### 4. Structure des fichiers
+### 4. File structure
 ```
 lib/
-├── index.js + index.d.ts          # Point d'entrée principal (React Native)
-├── core.js + core.d.ts            # Point d'entrée core (sans React Native)
-├── CustomMapView.js + .d.ts       # Composant principal
-├── TileCache.js + .d.ts           # Cache de tuiles
-├── TilePreloader.js + .d.ts       # Préchargeur de tuiles
-├── PerformanceOptimizations.js    # Optimisations de performance
-├── components/                    # Composants React
-├── hooks/                         # Hooks React
-├── types/                         # Définitions TypeScript
-└── utils/                         # Utilitaires
+├── index.js + index.d.ts          # Main entry point (React Native)
+├── core.js + core.d.ts            # Core entry point (without React Native)
+├── CustomMapView.js + .d.ts       # Main component
+├── TileCache.js + .d.ts           # Tile cache
+├── TilePreloader.js + .d.ts       # Tile preloader
+├── PerformanceOptimizations.js    # Performance optimizations
+├── components/                    # React components
+├── hooks/                         # React hooks
+├── types/                         # TypeScript definitions
+└── utils/                         # Utilities
 ```
 
-## 🚀 Comment utiliser la librairie
+## 🚀 How to use the library
 
-### Pour un projet React Native/Expo complet :
+### For a complete React Native/Expo project:
 ```typescript
 import { CustomMapView, TileCache, useMapPerformance } from '@chauffleet/expo-custom-map';
 ```
 
-### Pour les fonctionnalités core uniquement (Node.js, etc.) :
+### For core features only (Node.js, etc.):
 ```typescript
 import { TileCache, TilePreloader, calculateDistance } from '@chauffleet/expo-custom-map/lib/core';
 ```
 
-### Exemple d'utilisation de base :
+### Basic usage example:
 ```typescript
 const cache = new TileCache(100); // 100MB cache
 const preloader = new TilePreloader(cache);
 
-// Précharger une zone
+// Preload an area
 await preloader.preloadTilesAroundCenter(48.8566, 2.3522, 12, 2);
 
-// Utiliser dans un composant React Native
+// Use in a React Native component
 <CustomMapView
   center={[2.3522, 48.8566]}
   zoom={12}
@@ -64,14 +64,14 @@ await preloader.preloadTilesAroundCenter(48.8566, 2.3522, 12, 2);
 />
 ```
 
-## 🎯 Points résolvés
+## 🎯 Resolved Issues
 
-1. **Import de CustomMapView** : Résolu en renommant `index.ts` en `index.tsx`
-2. **Configuration TypeScript** : Corrigée pour `jsx: "react-jsx"`
-3. **Export des types** : `TileLayerProps` ajouté aux exports
-4. **Compilation sans erreur** : Tous les modules se compilent correctement
-5. **Séparation core/React** : Fichier `core.ts` pour les fonctionnalités non-React
+1. **CustomMapView import**: Fixed by renaming `index.ts` to `index.tsx`
+2. **TypeScript configuration**: Corrected for `jsx: "react-jsx"`
+3. **Type exports**: `TileLayerProps` added to exports
+4. **Error-free compilation**: All modules compile correctly
+5. **Core/React separation**: `core.ts` file for non-React features
 
-## 🔥 Prêt pour utilisation !
+## 🔥 Ready for use!
 
-La librairie est maintenant entièrement fonctionnelle et prête à être utilisée dans des projets Expo/React Native.
+The library is now fully functional and ready to be used in Expo/React Native projects.
