@@ -1,0 +1,9 @@
+{
+  "platforms": ["android", "ios"],
+  "android": {
+    "modules": ["expo-custom-map"]
+  },
+  "ios": {
+    "modules": ["ExpoCustomMap"]
+  }
+}
