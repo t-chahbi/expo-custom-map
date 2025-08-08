@@ -1,6 +1,6 @@
 {
   "name": "@chauffleet/expo-custom-map",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Open source custom map library for Expo/React Native. Use your own tiles without Google Maps, Mapbox, or API keys. Created by ChaufFleet.",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
