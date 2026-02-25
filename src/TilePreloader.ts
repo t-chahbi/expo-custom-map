@@ -11,6 +11,8 @@ export interface TilePreloadOptions {
   delay?: number;
   /** Nombre maximum de téléchargements simultanés */
   maxConcurrent?: number;
+  /** Template d'URL de tuile */
+  tileUrlTemplate?: string;
 }
 
 export interface PreloadProgress {
@@ -24,17 +26,28 @@ export interface PreloadProgress {
   progress: number;
 }
 
+export interface PreloadQueueItem {
+  x: number;
+  y: number;
+  z: number;
+  url: string;
+}
+
 export class TilePreloader {
   private cache: TileCache;
-  private downloadQueue: Set<string> = new Set();
+  private downloadQueue: PreloadQueueItem[] = [];
   private currentDownloads: Set<string> = new Set();
   private maxConcurrentDownloads: number = 4;
   private downloadDelay: number = 50;
   private isPreloading: boolean = false;
   private preloadAbortController?: AbortController;
+  private defaultTileUrlTemplate: string = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-  constructor(cache: TileCache) {
+  constructor(cache: TileCache, defaultTileUrlTemplate?: string) {
     this.cache = cache;
+    if (defaultTileUrlTemplate) {
+      this.defaultTileUrlTemplate = defaultTileUrlTemplate;
+    }
   }
 
   /**
@@ -51,6 +64,7 @@ export class TilePreloader {
       zoomLevels = [zoom],
       delay = this.downloadDelay,
       maxConcurrent = this.maxConcurrentDownloads,
+      tileUrlTemplate = this.defaultTileUrlTemplate,
     } = options;
 
     // Annuler le préchargement précédent
@@ -65,7 +79,8 @@ export class TilePreloader {
       latitude,
       longitude,
       zoomLevels,
-      radius
+      radius,
+      tileUrlTemplate
     );
 
     const progress: PreloadProgress = {
@@ -76,9 +91,8 @@ export class TilePreloader {
     };
 
     // Filtrer les tuiles déjà en cache
-    const tilesToDownload = tilesToPreload.filter((tileKey) => {
-      const [z, x, y] = tileKey.replace('tile-', '').split('-').map(Number);
-      return !this.cache.has(x, y, z);
+    const tilesToDownload = tilesToPreload.filter((tile) => {
+      return !this.cache.has(tile.x, tile.y, tile.z);
     });
 
     progress.total = tilesToDownload.length;
@@ -89,10 +103,8 @@ export class TilePreloader {
       return progress;
     }
 
-    // Ajouter les tuiles à la queue de téléchargement
-    tilesToDownload.forEach((tileUrl) => {
-      this.downloadQueue.add(tileUrl);
-    });
+    // Remplir la queue de téléchargement
+    this.downloadQueue = [...tilesToDownload];
 
     // Démarrer le téléchargement des tuiles
     const downloadPromises: Promise<void>[] = [];
@@ -107,11 +119,11 @@ export class TilePreloader {
       console.warn('Erreur lors du préchargement des tuiles:', error);
     } finally {
       this.isPreloading = false;
-      this.downloadQueue.clear();
+      this.downloadQueue = [];
       this.currentDownloads.clear();
     }
 
-    progress.progress = Math.round((progress.loaded / progress.total) * 100);
+    progress.progress = progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 100;
     return progress;
   }
 
@@ -123,21 +135,17 @@ export class TilePreloader {
     centerLon: number,
     zoom: number,
     radius: number = 2,
-    tileUrlTemplate?: string
+    tileUrlTemplate: string = this.defaultTileUrlTemplate
   ): Promise<void> {
-    if (!tileUrlTemplate) {
-      throw new Error('Template d\'URL de tuile requis pour le préchargement');
-    }
-
-    const tilesToPreload: string[] = [];
+    const tilesToPreload: PreloadQueueItem[] = [];
     const centerTile = latLonToTile(centerLat, centerLon, zoom);
 
-    // Générer les URLs des tuiles dans le rayon spécifié
+    // Générer les tuiles dans le rayon spécifié
     for (let x = centerTile.x - radius; x <= centerTile.x + radius; x++) {
       for (let y = centerTile.y - radius; y <= centerTile.y + radius; y++) {
         if (x >= 0 && y >= 0 && x < Math.pow(2, zoom) && y < Math.pow(2, zoom)) {
           const tileUrl = this.buildTileUrl(tileUrlTemplate, x, y, zoom);
-          tilesToPreload.push(tileUrl);
+          tilesToPreload.push({ x, y, z: zoom, url: tileUrl });
         }
       }
     }
@@ -146,13 +154,12 @@ export class TilePreloader {
     const promises: Promise<void>[] = [];
     const semaphore = this.createSemaphore(this.maxConcurrentDownloads);
 
-    for (const tileUrl of tilesToPreload) {
-      const [z, x, y] = tileUrl.replace('tile-', '').split('-').map(Number);
-      if (!this.cache.has(x, y, z)) {
+    for (const tile of tilesToPreload) {
+      if (!this.cache.has(tile.x, tile.y, tile.z)) {
         promises.push(
           semaphore.acquire().then(async (release) => {
             try {
-              await this.downloadAndCacheTile(tileUrl);
+              await this.downloadAndCacheTile(tile);
             } finally {
               release();
             }
@@ -164,6 +171,7 @@ export class TilePreloader {
     await Promise.all(promises);
   }
 
+
   /**
    * Précharge les tuiles le long d'un itinéraire
    */
@@ -171,22 +179,18 @@ export class TilePreloader {
     coordinates: [number, number][],
     zoom: number,
     corridor: number = 1000, // corridor en mètres
-    tileUrlTemplate?: string
+    tileUrlTemplate: string = this.defaultTileUrlTemplate
   ): Promise<void> {
-    if (!tileUrlTemplate) {
-      throw new Error('Template d\'URL de tuile requis pour le préchargement');
-    }
-
-    const tilesToPreload = new Set<string>();
+    const tilesToPreloadMap = new Map<string, PreloadQueueItem>();
 
     // Pour chaque segment de l'itinéraire
     for (let i = 0; i < coordinates.length - 1; i++) {
       const start = coordinates[i];
       const end = coordinates[i + 1];
 
-      // Calculer les points le long du segment
+      // Calculer les points le long du segment (les coordonnées sont [lon, lat])
       const distance = this.calculateDistance(start, end);
-      const steps = Math.ceil(distance / 100); // un point tous les 100 mètres
+      const steps = Math.max(1, Math.ceil(distance * 10)); // d est en km, donc un point environ tous les 100m
 
       for (let step = 0; step <= steps; step++) {
         const ratio = step / steps;
@@ -203,7 +207,8 @@ export class TilePreloader {
           for (let y = centerTile.y - radiusInTiles; y <= centerTile.y + radiusInTiles; y++) {
             if (x >= 0 && y >= 0 && x < Math.pow(2, zoom) && y < Math.pow(2, zoom)) {
               const tileUrl = this.buildTileUrl(tileUrlTemplate, x, y, zoom);
-              tilesToPreload.add(tileUrl);
+              const key = `${zoom}-${x}-${y}`;
+              tilesToPreloadMap.set(key, { x, y, z: zoom, url: tileUrl });
             }
           }
         }
@@ -211,12 +216,11 @@ export class TilePreloader {
     }
 
     // Précharger toutes les tuiles collectées
-    const promises = Array.from(tilesToPreload)
-      .filter(tileUrl => {
-        const [z, x, y] = tileUrl.replace('tile-', '').split('-').map(Number);
-        return !this.cache.has(x, y, z);
-      })
-      .map(tileUrl => this.downloadAndCacheTile(tileUrl));
+    const promises = Array.from(tilesToPreloadMap.values())
+      .filter(tile => !this.cache.has(tile.x, tile.y, tile.z))
+      .map(tile => this.downloadAndCacheTile(tile).catch(err => {
+        console.warn(`Erreur de préchargement de tuile itinéraire:`, err);
+      }));
 
     await Promise.all(promises);
   }
@@ -229,7 +233,7 @@ export class TilePreloader {
       this.preloadAbortController.abort();
     }
     this.isPreloading = false;
-    this.downloadQueue.clear();
+    this.downloadQueue = [];
     this.currentDownloads.clear();
   }
 
@@ -244,7 +248,7 @@ export class TilePreloader {
    * Obtient le nombre de tuiles en queue de téléchargement
    */
   getQueueSize(): number {
-    return this.downloadQueue.size;
+    return this.downloadQueue.length;
   }
 
   // Méthodes privées
@@ -253,9 +257,10 @@ export class TilePreloader {
     latitude: number,
     longitude: number,
     zoomLevels: number[],
-    radius: number
-  ): string[] {
-    const tiles: string[] = [];
+    radius: number,
+    tileUrlTemplate: string
+  ): PreloadQueueItem[] {
+    const tiles: PreloadQueueItem[] = [];
 
     zoomLevels.forEach((zoom) => {
       const centerTile = latLonToTile(latitude, longitude, zoom);
@@ -263,8 +268,8 @@ export class TilePreloader {
       for (let x = centerTile.x - radius; x <= centerTile.x + radius; x++) {
         for (let y = centerTile.y - radius; y <= centerTile.y + radius; y++) {
           if (x >= 0 && y >= 0 && x < Math.pow(2, zoom) && y < Math.pow(2, zoom)) {
-            const tileUrl = `tile-${zoom}-${x}-${y}`;
-            tiles.push(tileUrl);
+            const tileUrl = this.buildTileUrl(tileUrlTemplate, x, y, zoom);
+            tiles.push({ x, y, z: zoom, url: tileUrl });
           }
         }
       }
@@ -274,27 +279,28 @@ export class TilePreloader {
   }
 
   private async processDownloadQueue(progress: PreloadProgress): Promise<void> {
-    while (this.downloadQueue.size > 0 && this.isPreloading) {
-      const tileUrl = this.downloadQueue.values().next().value;
-      if (!tileUrl) break;
+    while (this.downloadQueue.length > 0 && this.isPreloading) {
+      const tile = this.downloadQueue.shift();
+      if (!tile) break;
 
-      this.downloadQueue.delete(tileUrl);
-
-      if (this.currentDownloads.has(tileUrl)) {
+      if (this.currentDownloads.has(tile.url)) {
         continue;
       }
 
-      this.currentDownloads.add(tileUrl);
+      this.currentDownloads.add(tile.url);
 
       try {
-        await this.downloadAndCacheTile(tileUrl);
+        await this.downloadAndCacheTile(tile);
         progress.loaded++;
       } catch (error) {
         progress.errors++;
-        console.warn(`Erreur de téléchargement pour la tuile ${tileUrl}:`, error);
+        console.warn(`Erreur de téléchargement pour la tuile ${tile.url}:`, error);
       } finally {
-        this.currentDownloads.delete(tileUrl);
+        this.currentDownloads.delete(tile.url);
       }
+
+      // Mettre à jour la progression globale
+      progress.progress = progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 100;
 
       // Délai entre les téléchargements
       if (this.downloadDelay > 0) {
@@ -308,11 +314,9 @@ export class TilePreloader {
     }
   }
 
-  private async downloadAndCacheTile(tileUrl: string): Promise<void> {
+  private async downloadAndCacheTile(tile: PreloadQueueItem): Promise<void> {
     try {
-      // Simuler le téléchargement d'une tuile
-      // Dans une vraie implémentation, ceci ferait un fetch vers l'URL de la tuile
-      const response = await fetch(tileUrl, {
+      const response = await fetch(tile.url, {
         signal: this.preloadAbortController?.signal,
       });
 
@@ -322,11 +326,8 @@ export class TilePreloader {
 
       const tileData = await response.text();
       
-      // Extraire les coordonnées de la tuile depuis l'URL
-      const [z, x, y] = tileUrl.replace('tile-', '').split('-').map(Number);
-      
       // Stocker dans le cache
-      await this.cache.set({ x, y, z, url: tileUrl }, tileData);
+      await this.cache.set({ x: tile.x, y: tile.y, z: tile.z, url: tile.url }, tileData);
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         return; // Opération annulée
@@ -344,7 +345,7 @@ export class TilePreloader {
   }
 
   private calculateDistance(coord1: [number, number], coord2: [number, number]): number {
-    const R = 6371000; // Rayon de la Terre en mètres
+    const R = 6371; // Rayon de la Terre en km (geoUtils utilise km)
     const lat1Rad = (coord1[1] * Math.PI) / 180;
     const lat2Rad = (coord2[1] * Math.PI) / 180;
     const deltaLatRad = ((coord2[1] - coord1[1]) * Math.PI) / 180;
