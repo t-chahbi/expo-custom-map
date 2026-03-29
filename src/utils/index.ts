@@ -6,6 +6,10 @@ export * from './geoUtils';
 // Export all mathematical utilities
 export * from './mathUtils';
 
+// Export routing utilities
+export * from './routing';
+
+
 // Re-export commonly used functions with cleaner names
 export {
   deg2rad as degreesToRadians,
