@@ -18,6 +18,9 @@ export interface MapViewProps {
   enableHighDPI?: boolean;
   tileSize?: number;
   cacheSize?: number;
+  polylines?: PolylineProps[];
+  polygons?: PolygonProps[];
+  circles?: CircleProps[];
 }
 
 export interface MapRegion {

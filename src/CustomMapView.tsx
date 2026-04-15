@@ -4,6 +4,7 @@ import { View, StyleSheet, Dimensions, PanResponder, GestureResponderEvent, PanR
 import { MapViewProps, MapRegion } from './types';
 import TileLayer from './components/TileLayer';
 import MarkerComponent from './components/MarkerComponent';
+import { Canvas, Path as SkiaPath, Circle as SkiaCircle, Skia } from '@shopify/react-native-skia';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -45,6 +46,9 @@ const CustomMapView: React.FC<MapViewProps> = ({
   onMapReady,
   markers = [],
   tileSize = 256,
+  polylines = [],
+  polygons = [],
+  circles = [],
   ...props
 }) => {
   // Animation values pour la fluidité
@@ -351,6 +355,77 @@ const CustomMapView: React.FC<MapViewProps> = ({
     }).filter(marker => marker.isVisible);
   }, [markers, calculateMarkerPosition]);
 
+  // Calcul des polylines, polygons et circles pour le rendu Skia
+  const renderedPolylines = useMemo(() => {
+    if (!polylines || polylines.length === 0) return [];
+    
+    return polylines.map(polyline => {
+      const path = Skia.Path.Make();
+      polyline.coordinates.forEach((coord, idx) => {
+        const screenPos = calculateMarkerPosition(coord);
+        if (idx === 0) {
+          path.moveTo(screenPos.x, screenPos.y);
+        } else {
+          path.lineTo(screenPos.x, screenPos.y);
+        }
+      });
+      return {
+        path,
+        strokeColor: polyline.strokeColor || '#007AFF',
+        strokeWidth: polyline.strokeWidth || 3,
+        opacity: polyline.strokeOpacity ?? 1,
+      };
+    });
+  }, [polylines, calculateMarkerPosition]);
+
+  const renderedPolygons = useMemo(() => {
+    if (!polygons || polygons.length === 0) return [];
+
+    return polygons.map(polygon => {
+      const path = Skia.Path.Make();
+      polygon.coordinates.forEach((coord, idx) => {
+        const screenPos = calculateMarkerPosition(coord);
+        if (idx === 0) {
+          path.moveTo(screenPos.x, screenPos.y);
+        } else {
+          path.lineTo(screenPos.x, screenPos.y);
+        }
+      });
+      path.close();
+      return {
+        path,
+        fillColor: polygon.fillColor || 'rgba(0, 122, 255, 0.2)',
+        fillOpacity: polygon.fillOpacity ?? 1,
+        strokeColor: polygon.strokeColor || '#007AFF',
+        strokeWidth: polygon.strokeWidth || 2,
+        strokeOpacity: polygon.strokeOpacity ?? 1,
+      };
+    });
+  }, [polygons, calculateMarkerPosition]);
+
+  const renderedCircles = useMemo(() => {
+    if (!circles || circles.length === 0) return [];
+
+    return circles.map(circle => {
+      const screenPos = calculateMarkerPosition(circle.center);
+      
+      const lat = circle.center[1];
+      const metersPerPixel = (40075017 * Math.cos((lat * Math.PI) / 180)) / (Math.pow(2, currentRegion.zoom) * tileSize);
+      const r = circle.radius / metersPerPixel;
+
+      return {
+        cx: screenPos.x,
+        cy: screenPos.y,
+        r,
+        fillColor: circle.fillColor || 'rgba(0, 122, 255, 0.2)',
+        fillOpacity: circle.fillOpacity ?? 1,
+        strokeColor: circle.strokeColor || '#007AFF',
+        strokeWidth: circle.strokeWidth || 2,
+        strokeOpacity: circle.strokeOpacity ?? 1,
+      };
+    });
+  }, [circles, calculateMarkerPosition, currentRegion.zoom, tileSize]);
+
   return (
     <View 
       ref={containerRef}
@@ -368,6 +443,64 @@ const CustomMapView: React.FC<MapViewProps> = ({
           tileSize={tileSize}
         />
       </Animated.View>
+      
+      {/* Canvas Skia pour dessiner les overlays sous les marqueurs */}
+      {(renderedPolylines.length > 0 || renderedPolygons.length > 0 || renderedCircles.length > 0) && (
+        <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+          {renderedPolylines.map((item, idx) => (
+            <SkiaPath
+              key={`polyline-${idx}`}
+              path={item.path}
+              color={item.strokeColor}
+              style="stroke"
+              strokeWidth={item.strokeWidth}
+              opacity={item.opacity}
+            />
+          ))}
+          {renderedPolygons.map((item, idx) => (
+            <SkiaPath
+              key={`polygon-${idx}`}
+              path={item.path}
+              color={item.fillColor}
+              style="fill"
+              opacity={item.fillOpacity}
+            />
+          ))}
+          {renderedPolygons.map((item, idx) => (
+            <SkiaPath
+              key={`polygon-stroke-${idx}`}
+              path={item.path}
+              color={item.strokeColor}
+              style="stroke"
+              strokeWidth={item.strokeWidth}
+              opacity={item.strokeOpacity}
+            />
+          ))}
+          {renderedCircles.map((item, idx) => (
+            <SkiaCircle
+              key={`circle-${idx}`}
+              cx={item.cx}
+              cy={item.cy}
+              r={item.r}
+              color={item.fillColor}
+              style="fill"
+              opacity={item.fillOpacity}
+            />
+          ))}
+          {renderedCircles.map((item, idx) => (
+            <SkiaCircle
+              key={`circle-stroke-${idx}`}
+              cx={item.cx}
+              cy={item.cy}
+              r={item.r}
+              color={item.strokeColor}
+              style="stroke"
+              strokeWidth={item.strokeWidth}
+              opacity={item.strokeOpacity}
+            />
+          ))}
+        </Canvas>
+      )}
       
       {/* Markers optimisés */}
       {visibleMarkers.map((marker) => (
