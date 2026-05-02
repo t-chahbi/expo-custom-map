@@ -171,6 +171,114 @@ export class TilePreloader {
     await Promise.all(promises);
   }
 
+  /**
+   * Précharge les tuiles pour des limites géographiques données
+   */
+  async preloadTilesForBounds(
+    bounds: { north: number; south: number; east: number; west: number },
+    minZoom: number,
+    maxZoom: number,
+    options: Omit<TilePreloadOptions, 'zoomLevels'> & { onProgress?: (progress: PreloadProgress) => void } = {}
+  ): Promise<PreloadProgress> {
+    const {
+      delay = this.downloadDelay,
+      maxConcurrent = this.maxConcurrentDownloads,
+      tileUrlTemplate = this.defaultTileUrlTemplate,
+      onProgress,
+    } = options;
+
+    this.cancelPreloading();
+    this.downloadDelay = delay;
+    this.maxConcurrentDownloads = maxConcurrent;
+    this.isPreloading = true;
+    this.preloadAbortController = new AbortController();
+
+    const tilesToPreload: PreloadQueueItem[] = [];
+
+    for (let z = minZoom; z <= maxZoom; z++) {
+      const topLeftTile = latLonToTile(bounds.north, bounds.west, z);
+      const bottomRightTile = latLonToTile(bounds.south, bounds.east, z);
+
+      const minX = Math.min(topLeftTile.x, bottomRightTile.x);
+      const maxX = Math.max(topLeftTile.x, bottomRightTile.x);
+      const minY = Math.min(topLeftTile.y, bottomRightTile.y);
+      const maxY = Math.max(topLeftTile.y, bottomRightTile.y);
+
+      for (let x = minX; x <= maxX; x++) {
+        for (let y = minY; y <= maxY; y++) {
+          const url = this.buildTileUrl(tileUrlTemplate, x, y, z);
+          tilesToPreload.push({ x, y, z, url });
+        }
+      }
+    }
+
+    const progress: PreloadProgress = {
+      total: tilesToPreload.length,
+      loaded: 0,
+      errors: 0,
+      progress: 0,
+    };
+
+    const tilesToDownload = tilesToPreload.filter(
+      tile => !this.cache.has(tile.x, tile.y, tile.z)
+    );
+
+    progress.total = tilesToDownload.length;
+
+    if (tilesToDownload.length === 0) {
+      progress.progress = 100;
+      this.isPreloading = false;
+      onProgress?.(progress);
+      return progress;
+    }
+
+    this.downloadQueue = [...tilesToDownload];
+
+    const downloadPromises: Promise<void>[] = [];
+    const runWorker = async () => {
+      while (this.downloadQueue.length > 0 && this.isPreloading) {
+        const tile = this.downloadQueue.shift();
+        if (!tile) break;
+
+        if (this.currentDownloads.has(tile.url)) continue;
+        this.currentDownloads.add(tile.url);
+
+        try {
+          await this.downloadAndCacheTile(tile);
+          progress.loaded++;
+        } catch (error) {
+          progress.errors++;
+        } finally {
+          this.currentDownloads.delete(tile.url);
+        }
+
+        progress.progress = progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 100;
+        onProgress?.(progress);
+
+        if (this.downloadDelay > 0) {
+          await new Promise(resolve => setTimeout(resolve, this.downloadDelay));
+        }
+
+        if (this.preloadAbortController?.signal.aborted) break;
+      }
+    };
+
+    for (let i = 0; i < Math.min(this.maxConcurrentDownloads, tilesToDownload.length); i++) {
+      downloadPromises.push(runWorker());
+    }
+
+    try {
+      await Promise.all(downloadPromises);
+    } finally {
+      this.isPreloading = false;
+      this.downloadQueue = [];
+      this.currentDownloads.clear();
+    }
+
+    progress.progress = progress.total > 0 ? Math.round((progress.loaded / progress.total) * 100) : 100;
+    onProgress?.(progress);
+    return progress;
+  }
 
   /**
    * Précharge les tuiles le long d'un itinéraire

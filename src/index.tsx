@@ -15,6 +15,7 @@ export { default as useMapPerformance } from './hooks/useMapPerformance';
 export { default as useOptimizedGestures } from './hooks/useOptimizedGestures';
 export { useAdvancedTileCache } from './hooks/useAdvancedTileCache';
 export { useFluidGestures } from './hooks/useFluidGestures';
+export { useOfflineMap } from './hooks/useOfflineMap';
 
 // Re-exports des hooks avec noms plus courts
 export { 

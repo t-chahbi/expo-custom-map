@@ -5,6 +5,7 @@ export { default as useMapPerformance } from './useMapPerformance';
 export { default as useOptimizedGestures } from './useOptimizedGestures';
 export { useAdvancedTileCache } from './useAdvancedTileCache';
 export { useFluidGestures } from './useFluidGestures';
+export { useOfflineMap } from './useOfflineMap';
 
 // Re-export with cleaner names
 export { default as usePerformance } from './useMapPerformance';
