@@ -9,6 +9,9 @@ interface PerformanceHookResult {
   stopMonitoring: () => void;
   resetStats: () => void;
   isMonitoring: boolean;
+  recordTileLoadTime: (loadTime: number) => void;
+  recordCacheHit: () => void;
+  recordCacheMiss: () => void;
 }
 
 const useMapPerformance = (): PerformanceHookResult => {
@@ -30,44 +33,47 @@ const useMapPerformance = (): PerformanceHookResult => {
   const [isMonitoring, setIsMonitoring] = useState(false);
   
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const frameCountRef = useRef(0);
+  const requestRef = useRef<number | null>(null);
+  
   const lastFrameTimeRef = useRef(0);
   const frameTimesRef = useRef<number[]>([]);
   const tileLoadTimesRef = useRef<number[]>([]);
   const cacheHitsRef = useRef(0);
   const cacheMissesRef = useRef(0);
 
-  // Mesurer les FPS
-  const measureFPS = useCallback(() => {
-    const now = performance.now();
+  // Loop requestAnimationFrame pour mesurer le framerate de rendu réel
+  const renderLoop = useCallback((timestamp: number) => {
     if (lastFrameTimeRef.current > 0) {
-      const frameTime = now - lastFrameTimeRef.current;
-      frameTimesRef.current.push(frameTime);
+      const frameTime = timestamp - lastFrameTimeRef.current;
       
-      // Garder seulement les 60 dernières mesures
-      if (frameTimesRef.current.length > 60) {
-        frameTimesRef.current.shift();
+      // Filtrer les valeurs aberrantes (comme le premier frame)
+      if (frameTime < 200) {
+        frameTimesRef.current.push(frameTime);
+        
+        // Garder les 60 dernières mesures
+        if (frameTimesRef.current.length > 60) {
+          frameTimesRef.current.shift();
+        }
+        
+        // Calculer les FPS moyens
+        const avgFrameTime = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
+        const fps = Math.round(1000 / avgFrameTime);
+        
+        setStats(prev => ({
+          ...prev,
+          fps: Math.min(fps, 60), // Cap à 60 FPS
+          frameTime: Math.round(avgFrameTime * 100) / 100,
+        }));
       }
-      
-      // Calculer FPS moyen
-      const avgFrameTime = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
-      const fps = Math.round(1000 / avgFrameTime);
-      
-      setStats(prev => ({
-        ...prev,
-        fps: Math.min(fps, 60), // Cap à 60 FPS
-        frameTime: Math.round(avgFrameTime * 100) / 100,
-      }));
     }
-    lastFrameTimeRef.current = now;
-    frameCountRef.current++;
+    lastFrameTimeRef.current = timestamp;
+    requestRef.current = requestAnimationFrame(renderLoop);
   }, []);
 
   // Enregistrer le temps de chargement d'une tuile
   const recordTileLoadTime = useCallback((loadTime: number) => {
     tileLoadTimesRef.current.push(loadTime);
     
-    // Garder seulement les 100 dernières mesures
     if (tileLoadTimesRef.current.length > 100) {
       tileLoadTimesRef.current.shift();
     }
@@ -108,12 +114,13 @@ const useMapPerformance = (): PerformanceHookResult => {
     }));
   }, []);
 
-  // Estimer l'utilisation mémoire
+  // Estimer l'utilisation mémoire (de manière peu coûteuse)
   const estimateMemoryUsage = useCallback(() => {
-    if ('memory' in performance) {
-      const memInfo = (performance as any).memory;
+    const performanceObj = global.performance as any;
+    if (performanceObj && 'memory' in performanceObj) {
+      const memInfo = performanceObj.memory;
       const usedJSHeapSize = memInfo.usedJSHeapSize;
-      const memoryUsageMB = Math.round(usedJSHeapSize / 1024 / 1024 * 100) / 100;
+      const memoryUsageMB = Math.round((usedJSHeapSize / 1024 / 1024) * 100) / 100;
       
       setStats(prev => ({
         ...prev,
@@ -127,19 +134,27 @@ const useMapPerformance = (): PerformanceHookResult => {
     if (isMonitoring) return;
     
     setIsMonitoring(true);
+    lastFrameTimeRef.current = 0;
+    frameTimesRef.current = [];
     
-    // Surveillance des FPS et mémoire
+    requestRef.current = requestAnimationFrame(renderLoop);
+    
+    // Mesurer la mémoire de manière espacée (toutes les 5 secondes) pour économiser le CPU
     intervalRef.current = setInterval(() => {
-      measureFPS();
       estimateMemoryUsage();
-    }, 1000 / 60); // 60 FPS
-  }, [isMonitoring, measureFPS, estimateMemoryUsage]);
+    }, 5000);
+  }, [isMonitoring, renderLoop, estimateMemoryUsage]);
 
   // Arrêter la surveillance
   const stopMonitoring = useCallback(() => {
     if (!isMonitoring) return;
     
     setIsMonitoring(false);
+    
+    if (requestRef.current) {
+      cancelAnimationFrame(requestRef.current);
+      requestRef.current = null;
+    }
     
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -149,7 +164,6 @@ const useMapPerformance = (): PerformanceHookResult => {
 
   // Réinitialiser les statistiques
   const resetStats = useCallback(() => {
-    frameCountRef.current = 0;
     lastFrameTimeRef.current = 0;
     frameTimesRef.current = [];
     tileLoadTimesRef.current = [];
@@ -170,9 +184,12 @@ const useMapPerformance = (): PerformanceHookResult => {
     }));
   }, []);
 
-  // Nettoyer à la désinscription
+  // Nettoyage lors de la désinscription
   useEffect(() => {
     return () => {
+      if (requestRef.current) {
+        cancelAnimationFrame(requestRef.current);
+      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
@@ -186,6 +203,9 @@ const useMapPerformance = (): PerformanceHookResult => {
     stopMonitoring,
     resetStats,
     isMonitoring,
+    recordTileLoadTime,
+    recordCacheHit,
+    recordCacheMiss,
   };
 };
 
